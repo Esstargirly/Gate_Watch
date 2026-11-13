@@ -1,0 +1,52 @@
+.env
+.env.*
+!.env.example
+
+# Firebase service account keys (the sensor uses one)
+serviceAccount*.json
+serviceAccountKey*.json
+*-firebase-adminsdk-*.json
+*service-account*.json
+*.pem
+*.key
+
+# App Check debug tokens
+*appcheck-debug*
+
+# ------------------------------------------------------------------- node
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ----------------------------------------------------------------- python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# --------------------------------------------------------------- firebase
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+firebase-export-*/
+emulator-data/
+
+*.pcap
+*.pcapng
+*.cap
+
+# -------------------------------------------------------------- editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+*.log
