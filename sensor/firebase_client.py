@@ -99,6 +99,13 @@ def record_repeat(alert_id: str, at: Optional[datetime] = None) -> None:
     )
 
 
+def raise_alert_severity(alert_id: str, severity: str, reason: str = "") -> None:
+    """An open alert got worse (for example a brute force that keeps going).
+    Raises its severity and writes it into the alert's timeline."""
+    get_db().collection(s.ALERTS).document(alert_id).update({"severity": severity})
+    add_timeline(alert_id, f"Severity raised to {severity.capitalize()}", reason)
+
+
 def add_timeline(
     alert_id: str, title: str, detail: str = "", at: Optional[datetime] = None
 ) -> None:
@@ -191,6 +198,19 @@ def mark_stale_devices_offline(minutes: int = 5) -> int:
     if changed:
         batch.commit()
     return changed
+
+
+def find_device_by_ip(ip: str) -> Optional[str]:
+    """ID of the device currently using this IP, or None if we haven't seen it."""
+    query = (
+        get_db()
+        .collection(s.DEVICES)
+        .where(filter=FieldFilter("ip", "==", ip))
+        .limit(1)
+    )
+    for doc in query.stream():
+        return doc.id
+    return None
 
 
 # ------------------------------------------------------------------- watchlist
