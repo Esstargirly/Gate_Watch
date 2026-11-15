@@ -1,0 +1,56 @@
+// Theme copied from the Stitch design so every class (bg-surface-container-low,
+// text-label-sm, font-code-md ...) means exactly what it did in Stitch.
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: "class",
+  content: ["./index.html", "./src/**/*.js"],
+  theme: {
+    extend: {
+      screens: { xs: "420px" },
+      colors: {
+        "on-tertiary-fixed": "#001946", "on-secondary": "#243600", "tertiary-fixed-dim": "#b1c5ff",
+        outline: "#8c90a1", primary: "#b3c5ff", "inverse-on-surface": "#303030",
+        "on-primary-container": "#fffeff", "secondary-fixed": "#b1f800", "surface-container-low": "#1b1b1b",
+        "on-tertiary-container": "#ffffff", "secondary-fixed-dim": "#9bd900", "on-primary": "#002b75",
+        "on-secondary-container": "#4d6e00", "on-secondary-fixed": "#131f00", "on-primary-fixed-variant": "#003fa5",
+        "tertiary-fixed": "#dae2ff", "surface-container-lowest": "#0e0e0e", tertiary: "#b1c5ff",
+        "surface-bright": "#393939", "on-error": "#690005", "on-tertiary": "#002c70",
+        "outline-variant": "#424655", "surface-container-high": "#2a2a2a", "surface-container": "#1f1f1f",
+        "error-container": "#93000a", "surface-variant": "#353535", secondary: "#ffffff",
+        "on-surface": "#e2e2e2", "on-error-container": "#ffdad6", "on-background": "#e2e2e2",
+        "on-surface-variant": "#c2c6d8", background: "#131313", "inverse-surface": "#e2e2e2",
+        "on-tertiary-fixed-variant": "#00419e", "secondary-container": "#b1f800", "primary-fixed-dim": "#b3c5ff",
+        error: "#ffb4ab", "surface-container-highest": "#353535", "primary-fixed": "#dbe1ff",
+        "surface-dim": "#131313", "primary-container": "#1e6bff", "inverse-primary": "#0054d7",
+        "on-primary-fixed": "#001849", "tertiary-container": "#4372d7", "surface-tint": "#b3c5ff",
+        surface: "#131313", "on-secondary-fixed-variant": "#354e00",
+      },
+      borderRadius: { DEFAULT: "0rem", lg: "0rem", xl: "0rem", full: "9999px" },
+      spacing: {
+        gutter: "0.5rem", "margin-lg": "1rem", "space-xs": "0.25rem", "space-xl": "1rem",
+        "space-lg": "0.75rem", margin: "0.75rem", "space-md": "0.5rem", "gutter-lg": "0.75rem", "space-sm": "0.375rem",
+      },
+      fontFamily: {
+        "code-md": ["JetBrains Mono"], "headline-lg": ["Inter"], "code-lg": ["JetBrains Mono"],
+        "label-sm": ["JetBrains Mono"], "body-sm": ["Inter"], "headline-xl": ["Inter"], "headline-md": ["Inter"],
+        "body-lg": ["Inter"], "headline-xl-mobile": ["Inter"], "label-md": ["JetBrains Mono"],
+        "body-md": ["Inter"], "code-sm": ["JetBrains Mono"],
+      },
+      fontSize: {
+        "code-md": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+        "headline-lg": ["22px", { lineHeight: "28px", fontWeight: "600" }],
+        "code-lg": ["13px", { lineHeight: "18px", fontWeight: "500" }],
+        "label-sm": ["10px", { lineHeight: "12px", fontWeight: "600" }],
+        "body-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+        "headline-xl": ["32px", { lineHeight: "38px", fontWeight: "700" }],
+        "headline-md": ["16px", { lineHeight: "22px", fontWeight: "600" }],
+        "body-lg": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+        "headline-xl-mobile": ["24px", { lineHeight: "30px", fontWeight: "700" }],
+        "label-md": ["11px", { lineHeight: "14px", fontWeight: "600" }],
+        "body-md": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+        "code-sm": ["11px", { lineHeight: "14px", fontWeight: "400" }],
+      },
+    },
+  },
+  plugins: [],
+};
