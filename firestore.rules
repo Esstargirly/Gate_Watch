@@ -1,5 +1,17 @@
 rules_version = '2';
 
+// GateWatch Firestore rules
+//
+// The Python sensor uses the Admin SDK, which bypasses these rules, so it can
+// write alerts, traffic, devices, stats and sensor heartbeats freely.
+// These rules only control what people can do from the browser.
+//
+// Roles live in users/{uid}.role  ->  "admin", "analyst" or "pending".
+// New sign-ups create their own users/{uid} with role "pending", which gives
+// no access at all. An admin then changes the role (Settings > Users).
+// To create the first admin: sign up in the app, then in the Firebase console
+// open users/{thatUid} and change role from "pending" to "admin".
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -43,8 +55,14 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
 
-      // only admins add users or change roles
-      allow create, delete: if isAdmin();
+      // A person can create ONLY their own profile, and only as "pending".
+      // Admins can create any profile. Only admins change roles or delete.
+      allow create: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && request.resource.data.role == 'pending'
+            && request.resource.data.keys().hasOnly(
+                 ['email', 'displayName', 'role', 'mfaEnabled', 'createdAt']));
+      allow delete: if isAdmin();
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
             && onlyChanges(['displayName', 'lastLoginAt']));
