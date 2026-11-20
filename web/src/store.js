@@ -1,3 +1,5 @@
+// All live Firestore data lives here. Pages read `state` and re-render when
+
 import { collection, doc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "./firebase.js";
 
@@ -5,6 +7,7 @@ export const state = {
   authStatus: "loading", // loading | signedOut | pending | ready
   user: null,
   profile: null,
+  workspaceId: null,     // every signed-in person has their own private workspace
   authError: null,
   alerts: [],
   traffic: [],
@@ -33,6 +36,11 @@ export function fromDoc(snap) {
   }
   return out;
 }
+
+// Everything lives inside the signed-in person's own workspace:
+// workspaces/<their id>/alerts, /traffic, /devices ...
+export const wcol = (...path) => collection(db, "workspaces", state.workspaceId, ...path);
+export const wdoc = (...path) => doc(db, "workspaces", state.workspaceId, ...path);
 
 const todayId = () => new Date().toISOString().slice(0, 10); // UTC, same as schema.py
 let unsubs = [];
@@ -70,34 +78,31 @@ function listen(key, ref, { many = true, onAdded } = {}) {
   );
 }
 
-export function startData(role) {
+export function startData() {
   stopData();
-  listen("alerts", query(collection(db, "alerts"), orderBy("detectedAt", "desc"), limit(500)), {
+  listen("alerts", query(wcol("alerts"), orderBy("detectedAt", "desc"), limit(500)), {
     onAdded: (a) => {
       // only announce genuinely new alerts, not old ones sliding into the window
       if (a.detectedAt && Date.now() - a.detectedAt.getTime() < 300000) newAlertListeners.forEach((fn) => fn(a));
     },
   });
-  listen("traffic", query(collection(db, "traffic"), orderBy("ts", "desc"), limit(200)));
-  listen("devices", collection(db, "devices"));
-  listen("watchlist", collection(db, "watchlist"));
-  listen("sensors", collection(db, "sensors"));
-  listen("statsToday", doc(db, "stats", todayId()), { many: false });
-  if (role === "admin") {
-    listen("users", collection(db, "users"));
-    listen("audit", query(collection(db, "auditLog"), orderBy("timestamp", "desc"), limit(100)));
-  }
+  listen("traffic", query(wcol("traffic"), orderBy("ts", "desc"), limit(200)));
+  listen("devices", wcol("devices"));
+  listen("watchlist", wcol("watchlist"));
+  listen("sensors", wcol("sensors"));
+  listen("statsToday", wdoc("stats", todayId()), { many: false });
+  listen("audit", query(wcol("auditLog"), orderBy("timestamp", "desc"), limit(100)));
 }
 
 // timeline + notes for one alert (used by the incident page)
 export function watchAlertExtras(alertId, cb) {
   const t = onSnapshot(
-    query(collection(db, "alerts", alertId, "timeline"), orderBy("at")),
+    query(wcol("alerts", alertId, "timeline"), orderBy("at")),
     (s) => cb("timeline", s.docs.map(fromDoc)),
     (e) => console.error("timeline", e)
   );
   const n = onSnapshot(
-    query(collection(db, "alerts", alertId, "notes"), orderBy("createdAt", "desc")),
+    query(wcol("alerts", alertId, "notes"), orderBy("createdAt", "desc")),
     (s) => cb("notes", s.docs.map(fromDoc)),
     (e) => console.error("notes", e)
   );
@@ -106,7 +111,7 @@ export function watchAlertExtras(alertId, cb) {
 
 // ------------------------------------------------------------------ selectors
 export const isStaff = (p) => !!p && (p.role === "admin" || p.role === "analyst");
-export const isAdmin = () => state.profile?.role === "admin";
+export const isAdmin = () => !!state.profile; // you own your own workspace
 export const openAlerts = () => state.alerts.filter((a) => ["new", "acknowledged", "investigating"].includes(a.status));
 export const deviceById = (id) => state.devices.find((d) => d.id === id);
 export const watchByIp = (ip) => state.watchlist.find((w) => w.ip === ip);
