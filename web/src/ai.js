@@ -4,14 +4,18 @@ import {
   GoogleAIBackend,
   InferenceMode,
 } from "firebase/ai";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { app, db, currentConfig } from "./firebase.js";
+import { updateDoc, serverTimestamp } from "firebase/firestore";
+import { app, currentConfig } from "./firebase.js";
+import { wdoc } from "./store.js";
 
 const ai = getAI(app, { backend: new GoogleAIBackend() });
 
 // Same values as InferenceMode in sensor/schema.py
 export const AI_MODE = { ON_DEVICE: "on_device", CLOUD: "cloud" };
 
+// ------------------------------------------------------------- user setting
+// "Prefer on-device AI" toggle. Starts from Remote Config, and the user's own
+// choice (saved in the browser) wins after that.
 const PREF_KEY = "gw_prefer_on_device";
 let preferOnDevice = loadPreference();
 
@@ -39,6 +43,7 @@ export function setPreferOnDevice(value) {
 }
 
 // -------------------------------------------------------------------- models
+// Created lazily (the SDK wants this after a user interaction).
 const models = {};
 
 function getModel(kind) {
@@ -252,9 +257,9 @@ ${JSON.stringify(rows)}
 
 // ------------------------------------------------------------ saving a result
 // Caches the explanation on the alert so it doesn't need to run again.
-// Allowed by the Firestore rules (staff can write aiSummary only).
+// Allowed by the Firestore rules (you can write aiSummary only).
 export async function saveAiSummary(alertId, { text, mode }) {
-  await updateDoc(doc(db, "alerts", alertId), {
+  await updateDoc(wdoc("alerts", alertId), {
     aiSummary: { text, mode, generatedAt: serverTimestamp() },
   });
 }

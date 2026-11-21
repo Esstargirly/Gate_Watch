@@ -2,77 +2,35 @@ import {
   createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail,
   signInWithEmailAndPassword, signOut, updateProfile,
 } from "firebase/auth";
-import { doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
-import { auth, db } from "./firebase.js";
-import { fromDoc, isStaff, notify, startData, state, stopData } from "./store.js";
+import { auth } from "./firebase.js";
+import { notify, startData, state, stopData } from "./store.js";
 
 let pendingName = null; // name typed on the sign-up form
 
+const profileOf = (user) => ({
+  uid: user.uid,
+  email: user.email,
+  displayName: user.displayName || pendingName || (user.email || "you").split("@")[0],
+  role: "owner",
+});
+
 export function watchAuth() {
-  let unProfile = null;
-  let lastRole = null;
-
   onAuthStateChanged(auth, (user) => {
-    if (unProfile) unProfile();
-    unProfile = null;
     stopData();
-    lastRole = null;
     state.user = user;
-    state.profile = null;
-
     if (!user) {
+      pendingName = null;
+      state.profile = null;
+      state.workspaceId = null;
       state.authStatus = "signedOut";
       notify();
       return;
     }
-    state.authStatus = "loading";
+    state.profile = profileOf(user);
+    state.workspaceId = user.uid;
+    state.authStatus = "ready";
+    startData();
     notify();
-
-    const ref = doc(db, "users", user.uid);
-    let creating = false;
-    unProfile = onSnapshot(
-      ref,
-      async (snap) => {
-        if (!snap.exists()) {
-          if (!creating) {
-            creating = true;
-            try {
-              await setDoc(ref, {
-                email: user.email,
-                displayName: pendingName || user.displayName || (user.email || "user").split("@")[0],
-                role: "pending",
-                mfaEnabled: false,
-                createdAt: serverTimestamp(),
-              });
-            } catch (e) {
-              console.error("Could not create profile", e);
-            }
-          }
-          state.profile = null;
-          state.authStatus = "pending";
-          notify();
-          return;
-        }
-        const profile = { uid: user.uid, ...fromDoc(snap) };
-        state.profile = profile;
-        if (isStaff(profile)) {
-          state.authStatus = "ready";
-          if (profile.role !== lastRole) startData(profile.role);
-        } else {
-          state.authStatus = "pending";
-          stopData();
-        }
-        lastRole = profile.role;
-        notify();
-      },
-      (err) => {
-        console.error("profile listener", err);
-        state.authError = err;
-        state.authStatus = "pending";
-        notify();
-      }
-    );
-    updateDoc(ref, { lastLoginAt: serverTimestamp() }).catch(() => {});
   });
 }
 
@@ -81,7 +39,10 @@ export const signIn = (email, password) => signInWithEmailAndPassword(auth, emai
 export async function signUp(name, email, password) {
   pendingName = name || null;
   const cred = await createUserWithEmailAndPassword(auth, email, password);
-  if (name) await updateProfile(cred.user, { displayName: name }).catch(() => {});
+  if (name) {
+    await updateProfile(cred.user, { displayName: name }).catch(() => {});
+    if (state.profile) { state.profile.displayName = name; notify(); }
+  }
 }
 
 export const resetPassword = (email) => sendPasswordResetEmail(auth, email);
