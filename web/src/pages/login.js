@@ -1,3 +1,4 @@
+// Sign in / create account / reset password
 import { authMessage, resetPassword, signIn, signUp } from "../auth.js";
 import { LOGO, bus, html, icon } from "../ui.js";
 
@@ -25,7 +26,7 @@ export function render() {
       </div>
 
       <form data-form="auth" class="bg-surface-container-lowest p-margin flex flex-col gap-space-md shadow-md" novalidate>
-        <div class="font-label-sm text-label-sm text-tertiary">// ${signup ? "REQUEST_ACCESS" : "OPERATOR_SIGN_IN"}</div>
+        <div class="font-label-sm text-label-sm text-tertiary">// ${signup ? "CREATE_ACCOUNT" : "SIGN_IN"}</div>
         ${signup ? html`
         <label class="flex flex-col gap-1">
           <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Your name</span>
@@ -51,15 +52,15 @@ export function render() {
         ${error ? html`<div class="bg-error-container text-on-error-container px-space-md py-space-sm font-code-sm text-code-sm">${error}</div>` : ""}
         ${info ? html`<div class="bg-surface-container-high text-secondary-fixed px-space-md py-space-sm font-code-sm text-code-sm">${info}</div>` : ""}
         <button type="submit" ${busy ? "disabled" : ""} class="w-full bg-secondary-container text-on-secondary-container font-code-lg text-code-lg font-bold py-space-md flex items-center justify-center gap-2 tracking-widest uppercase transition-all active:scale-[0.99] disabled:opacity-60">
-          <span>${busy ? "WORKING..." : signup ? "REQUEST ACCESS" : "AUTHENTICATE"}</span>${icon("arrow_forward", "text-base")}
+          <span>${busy ? "WORKING..." : signup ? "CREATE ACCOUNT" : "SIGN IN"}</span>${icon("arrow_forward", "text-base")}
         </button>
         <button type="button" data-action="setMode" data-mode="${signup ? "signin" : "signup"}" class="font-code-md text-code-md text-primary hover:text-secondary uppercase tracking-wide py-1">
-          ${signup ? "Already approved? Sign in" : "New here? Request access"}
+          ${signup ? "Already have an account? Sign in" : "New here? Create an account"}
         </button>
       </form>
 
       <p class="text-center font-label-sm text-label-sm text-outline uppercase tracking-wider flex items-center justify-center gap-1.5">
-        ${icon("lock", "text-xs text-primary")} Encrypted connection (TLS) • An admin approves new accounts
+        ${icon("lock", "text-xs text-primary")} Encrypted connection (TLS) • Your data stays private to your account
       </p>
     </div>
   </div>`;
@@ -91,7 +92,7 @@ export const forms = {
   async auth() {
     error = ""; info = "";
     if (!email.trim() || !password) { error = "Enter your email and password."; return; }
-    if (mode === "signup" && !name.trim()) { error = "Enter your name so an admin knows who you are."; return; }
+    if (mode === "signup" && !name.trim()) { error = "Enter your name."; return; }
     busy = true;
     try {
       if (mode === "signup") await signUp(name.trim(), email.trim(), password);
