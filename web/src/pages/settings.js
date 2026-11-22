@@ -1,7 +1,7 @@
+// Settings: notifications, AI (on-device model), and your audit log.
 import { enableOnDeviceAI, getOnDeviceStatus, getPreferOnDevice, setPreferOnDevice } from "../ai.js";
-import { explainError, setUserRole } from "../actions.js";
-import { isAdmin, state } from "../store.js";
-import { SEV, SEVERITIES, bus, empty, fmtDateTime, getNotifPrefs, html, icon, setNotifPrefs, timeAgo, toast } from "../ui.js";
+import { state } from "../store.js";
+import { SEV, SEVERITIES, bus, empty, fmtDateTime, getNotifPrefs, html, icon, setNotifPrefs } from "../ui.js";
 
 let tab = "notifications";
 let status = "unavailable";
@@ -9,14 +9,13 @@ let progress = null; // null | 0..1 while the model downloads
 let aiError = "";
 
 const TABS = [
-  ["notifications", "notifications", "NOTIFICATIONS", false],
-  ["ai", "memory", "AI", false],
-  ["users", "group", "USERS", true],
-  ["audit", "history", "AUDIT", true],
+  ["notifications", "notifications", "NOTIFICATIONS"],
+  ["ai", "memory", "AI"],
+  ["audit", "history", "AUDIT"],
 ];
 
 export function mount(params) {
-  tab = TABS.some(([k, , , adminOnly]) => k === params[0] && (!adminOnly || isAdmin())) ? params[0] : "notifications";
+  tab = TABS.some(([k]) => k === params[0]) ? params[0] : "notifications";
   getOnDeviceStatus().then((s) => { status = s; bus.render(); });
 }
 
@@ -73,26 +72,6 @@ function aiPane() {
   </section>`;
 }
 
-function usersPane() {
-  const me = state.profile?.uid;
-  const list = [...state.users].sort((a, b) => (b.role === "pending") - (a.role === "pending") || String(a.displayName).localeCompare(String(b.displayName)));
-  return html`
-  <section class="flex flex-col gap-space-md">
-    <div class="flex items-center gap-1.5">${icon("admin_panel_settings", "text-primary text-[18px]")}<h2 class="font-headline-md text-headline-md tracking-tight uppercase text-on-surface">Users and roles</h2></div>
-    <p class="font-body-sm text-body-sm text-on-surface-variant">New people request access on the sign-in screen and show up here as Pending. Give them a role to let them in.</p>
-    ${!state.loaded.users ? html`<div class="h-20 bg-surface-container-low animate-pulse"></div>` : list.length ? list.map((u) => html`
-    <div class="bg-surface-container-low p-space-md flex flex-col gap-space-xs ${u.role === "pending" ? "border-l-2 border-error" : ""}">
-      <div class="flex items-start justify-between gap-space-xs">
-        <div class="flex flex-col min-w-0"><div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 ${u.role === "pending" ? "bg-error" : "bg-secondary-container"}"></span><span class="font-code-lg text-code-lg text-on-surface font-semibold truncate">${u.displayName || "(no name)"}</span>${u.id === me ? html`<span class="font-label-sm text-label-sm text-primary">YOU</span>` : ""}</div>
-          <span class="font-code-sm text-code-sm text-outline truncate pl-3">${u.email}</span></div>
-        <select data-change="role" data-uid="${u.id}" ${u.id === me ? "disabled" : ""} class="bg-surface-container text-secondary-fixed font-label-sm text-label-sm uppercase px-2 py-1 font-bold focus:outline-none disabled:opacity-60">
-          ${["pending", "analyst", "admin"].map((r) => html`<option value="${r}" ${u.role === r ? "selected" : ""}>Role: ${r}</option>`)}</select>
-      </div>
-      <div class="flex items-center justify-between bg-surface-container-lowest px-2 py-1 mt-1"><span class="font-label-sm text-label-sm ${u.role === "pending" ? "text-error" : "text-outline"}">${u.role === "pending" ? "AWAITING APPROVAL" : "ACTIVE"}</span><span class="font-code-sm text-code-sm text-on-surface-variant">Last login: ${u.lastLoginAt ? timeAgo(u.lastLoginAt) : "never"}</span></div>
-    </div>`) : empty("No users", "People who sign up appear here.", "group")}
-  </section>`;
-}
-
 function auditPane() {
   return html`
   <section class="flex flex-col gap-space-md">
@@ -102,19 +81,18 @@ function auditPane() {
         <div class="flex items-center justify-between font-label-sm text-label-sm"><span class="text-secondary-fixed font-bold">${e.action}</span><span class="text-outline">${fmtDateTime(e.timestamp)}</span></div>
         <p class="font-code-sm text-code-sm text-on-surface leading-tight"><span class="text-primary font-bold">${e.actorEmail}</span> • ${e.targetType} <span class="text-secondary-fixed bg-surface-container px-1">${String(e.targetId).slice(0, 40)}</span></p>
         ${e.details && Object.keys(e.details).length ? html`<div class="font-label-sm text-label-sm text-outline break-words">${Object.entries(e.details).filter(([, v]) => v != null && typeof v !== "object").map(([k, v]) => `${k}: ${v}`).join(" • ")}</div>` : ""}
-      </div>`)}</div>` : empty("Nothing logged yet", "Status changes, blocklist edits and role changes are recorded here.", "history")}
+      </div>`)}</div>` : empty("Nothing logged yet", "Status changes, notes and blocklist edits are recorded here.", "history")}
   </section>`;
 }
 
 export function render() {
-  const admin = isAdmin();
   return html`
   <div class="flex flex-col gap-space-md max-w-3xl mx-auto">
     <div class="flex items-center gap-space-xs py-space-sm"><span class="w-1.5 h-3 bg-primary-container"></span><span class="font-label-sm text-label-sm tracking-wider text-outline uppercase">// GW-SOC :: SETTINGS</span></div>
     <div class="w-full bg-surface-container-lowest p-space-xs overflow-x-auto no-scrollbar"><div class="flex items-center gap-space-xs min-w-max">
-      ${TABS.filter(([, , , adminOnly]) => !adminOnly || admin).map(([key, ic, label]) => html`<button data-action="tab" data-tab="${key}" class="px-space-md py-1.5 font-label-md text-label-md uppercase tracking-wider flex items-center gap-1.5 ${tab === key ? "text-on-secondary-container bg-secondary-container" : "text-on-surface-variant hover:text-on-surface bg-surface-container-low"}">${icon(ic, "text-[14px]")}${label}</button>`)}
+      ${TABS.map(([key, ic, label]) => html`<button data-action="tab" data-tab="${key}" class="px-space-md py-1.5 font-label-md text-label-md uppercase tracking-wider flex items-center gap-1.5 ${tab === key ? "text-on-secondary-container bg-secondary-container" : "text-on-surface-variant hover:text-on-surface bg-surface-container-low"}">${icon(ic, "text-[14px]")}${label}</button>`)}
     </div></div>
-    ${tab === "ai" ? aiPane() : tab === "users" && admin ? usersPane() : tab === "audit" && admin ? auditPane() : notificationsPane()}
+    ${tab === "ai" ? aiPane() : tab === "audit" ? auditPane() : notificationsPane()}
   </div>`;
 }
 
@@ -143,15 +121,4 @@ export const handlers = {
 
 export const changes = {
   minSeverity(v) { setNotifPrefs({ ...getNotifPrefs(), minSeverity: v }); },
-  async role(v, el) {
-    const uid = el.dataset.uid;
-    const u = state.users.find((x) => x.id === uid);
-    try {
-      await setUserRole(uid, v, u?.email);
-      toast(`${u?.displayName || "User"} is now ${v}`, "ok");
-    } catch (e) {
-      toast(explainError(e), "error");
-    }
-    bus.render();
-  },
 };
