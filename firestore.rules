@@ -2,43 +2,20 @@ rules_version = '2';
 
 // GateWatch Firestore rules
 //
-// The Python sensor uses the Admin SDK, which bypasses these rules, so it can
-// write alerts, traffic, devices, stats and sensor heartbeats freely.
-// These rules only control what people can do from the browser.
+// Everyone who signs up gets their OWN private workspace: workspaces/<their user id>.
+// Only that person can read or change anything inside it. Nobody can see anybody
+// else's workspace, and there is nothing to approve.
 //
-// Roles live in users/{uid}.role  ->  "admin", "analyst" or "pending".
-// New sign-ups create their own users/{uid} with role "pending", which gives
-// no access at all. An admin then changes the role (Settings > Users).
-// To create the first admin: sign up in the app, then in the Firebase console
-// open users/{thatUid} and change role from "pending" to "admin".
+// The Python sensor uses the Admin SDK, which bypasses these rules, so it can
+// write alerts, traffic, devices, stats and heartbeats into a workspace. These
+// rules only control what people can do from the browser.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------ helpers
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function profilePath() {
-      return /databases/$(database)/documents/users/$(request.auth.uid);
-    }
-
-    function hasProfile() {
-      return signedIn() && exists(profilePath());
-    }
-
-    function role() {
-      return get(profilePath()).data.role;
-    }
-
-    function isAdmin() {
-      return hasProfile() && role() == 'admin';
-    }
-
-    // admins and analysts
-    function isStaff() {
-      return hasProfile() && role() in ['admin', 'analyst'];
+    function isOwner(wid) {
+      return request.auth != null && request.auth.uid == wid;
     }
 
     // on an update, true if ONLY these fields were touched
@@ -51,120 +28,105 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasAny([key]);
     }
 
-    // ------------------------------------------------------------- users
-    match /users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+    match /workspaces/{wid} {
 
-      // A person can create ONLY their own profile, and only as "pending".
-      // Admins can create any profile. Only admins change roles or delete.
-      allow create: if isAdmin()
-        || (signedIn() && request.auth.uid == uid
-            && request.resource.data.role == 'pending'
-            && request.resource.data.keys().hasOnly(
-                 ['email', 'displayName', 'role', 'mfaEnabled', 'createdAt']));
-      allow delete: if isAdmin();
-      allow update: if isAdmin()
-        || (signedIn() && request.auth.uid == uid
-            && onlyChanges(['displayName', 'lastLoginAt']));
-    }
+      // ---------------------------------------------------------- alerts
+      // Alerts are your audit trail: created only by the sensor, never deleted.
+      // You can move the status along and cache an AI summary, nothing else.
+      match /alerts/{alertId} {
+        allow read: if isOwner(wid);
+        allow create, delete: if false;
 
-    // ------------------------------------------------------------ alerts
-    // Alerts are your audit trail: created only by the sensor, never deleted.
-    // Staff can move the status along and cache an AI summary, nothing else.
-    match /alerts/{alertId} {
-      allow read: if isStaff();
-      allow create, delete: if false;
+        allow update: if isOwner(wid)
+          && onlyChanges(['status', 'acknowledgedBy', 'acknowledgedAt',
+                          'resolvedBy', 'resolvedAt', 'aiSummary'])
+          && request.resource.data.status in
+               ['new', 'acknowledged', 'investigating', 'resolved', 'false_positive']
+          && (!changed('acknowledgedBy') || request.resource.data.acknowledgedBy == request.auth.uid)
+          && (!changed('acknowledgedAt') || request.resource.data.acknowledgedAt == request.time)
+          && (!changed('resolvedBy') || request.resource.data.resolvedBy == request.auth.uid)
+          && (!changed('resolvedAt') || request.resource.data.resolvedAt == request.time)
+          && (!changed('aiSummary') || request.resource.data.aiSummary.mode in ['on_device', 'cloud']);
 
-      allow update: if isStaff()
-        && onlyChanges(['status', 'acknowledgedBy', 'acknowledgedAt',
-                        'resolvedBy', 'resolvedAt', 'aiSummary'])
-        && request.resource.data.status in
-             ['new', 'acknowledged', 'investigating', 'resolved', 'false_positive']
-        && (!changed('acknowledgedBy') || request.resource.data.acknowledgedBy == request.auth.uid)
-        && (!changed('acknowledgedAt') || request.resource.data.acknowledgedAt == request.time)
-        && (!changed('resolvedBy') || request.resource.data.resolvedBy == request.auth.uid)
-        && (!changed('resolvedAt') || request.resource.data.resolvedAt == request.time)
-        && (!changed('aiSummary') || request.resource.data.aiSummary.mode in ['on_device', 'cloud']);
+        // notes: add-only, written as yourself, can't be edited or removed
+        match /notes/{noteId} {
+          allow read: if isOwner(wid);
+          allow create: if isOwner(wid)
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 2000;
+          allow update, delete: if false;
+        }
 
-      // analyst notes: add-only, written as yourself, can't be edited or removed
-      match /notes/{noteId} {
-        allow read: if isStaff();
-        allow create: if isStaff()
-          && request.resource.data.authorUid == request.auth.uid
-          && request.resource.data.createdAt == request.time
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000;
+        // timeline: you can add entries (like "Acknowledged"), nobody edits them
+        match /timeline/{entryId} {
+          allow read: if isOwner(wid);
+          allow create: if isOwner(wid)
+            && request.resource.data.at == request.time
+            && request.resource.data.title is string
+            && request.resource.data.title.size() <= 200;
+          allow update, delete: if false;
+        }
+      }
+
+      // --------------------------------------------------------- traffic
+      // Read-only in the browser. The sensor writes it, TTL deletes it.
+      match /traffic/{id} {
+        allow read: if isOwner(wid);
+        allow write: if false;
+      }
+
+      // --------------------------------------------------------- devices
+      // You can rename a device or mark it as known. The sensor does the rest.
+      match /devices/{deviceId} {
+        allow read: if isOwner(wid);
+        allow create: if false;
+        allow update: if isOwner(wid) && onlyChanges(['name', 'known']);
+        allow delete: if isOwner(wid);
+      }
+
+      // ------------------------------------------------------- watchlist
+      // You can add an IP, block/unblock it, or edit the reason.
+      match /watchlist/{ipDocId} {
+        allow read: if isOwner(wid);
+
+        allow create: if isOwner(wid)
+          && request.resource.data.keys().hasOnly(
+               ['ip', 'addedAt', 'reason', 'reputationScore', 'country',
+                'hits', 'lastSeen', 'blocked', 'addedBy'])
+          && request.resource.data.ip is string
+          && request.resource.data.blocked is bool
+          && request.resource.data.addedBy == request.auth.uid
+          && request.resource.data.addedAt == request.time;
+
+        allow update: if isOwner(wid) && onlyChanges(['blocked', 'reason']);
+        allow delete: if isOwner(wid);
+      }
+
+      // --------------------------------------------------------- sensors
+      match /sensors/{sensorId} {
+        allow read: if isOwner(wid);
+        allow write: if false;
+      }
+
+      // ------------------------------------------------------- audit log
+      // You add entries as yourself. Nobody can edit or delete an entry.
+      match /auditLog/{id} {
+        allow read: if isOwner(wid);
+        allow create: if isOwner(wid)
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.timestamp == request.time
+          && request.resource.data.action is string;
         allow update, delete: if false;
       }
 
-      // timeline: staff can add entries (like "Acknowledged"), nobody edits them
-      match /timeline/{entryId} {
-        allow read: if isStaff();
-        allow create: if isStaff()
-          && request.resource.data.at == request.time
-          && request.resource.data.title is string
-          && request.resource.data.title.size() <= 200;
-        allow update, delete: if false;
+      // ----------------------------------------------------------- stats
+      match /stats/{day} {
+        allow read: if isOwner(wid);
+        allow write: if false;
       }
-    }
-
-    // ----------------------------------------------------------- traffic
-    // Read-only in the browser. The sensor writes it, TTL deletes it.
-    match /traffic/{id} {
-      allow read: if isStaff();
-      allow write: if false;
-    }
-
-    // ----------------------------------------------------------- devices
-    // Staff can rename a device or mark it as known. The sensor does the rest.
-    match /devices/{deviceId} {
-      allow read: if isStaff();
-      allow create: if false;
-      allow update: if isStaff() && onlyChanges(['name', 'known']);
-      allow delete: if isAdmin();
-    }
-
-    // --------------------------------------------------------- watchlist
-    // Staff can add an IP, block/unblock it, or edit the reason.
-    match /watchlist/{ipDocId} {
-      allow read: if isStaff();
-
-      allow create: if isStaff()
-        && request.resource.data.keys().hasOnly(
-             ['ip', 'addedAt', 'reason', 'reputationScore', 'country',
-              'hits', 'lastSeen', 'blocked', 'addedBy'])
-        && request.resource.data.ip is string
-        && request.resource.data.blocked is bool
-        && request.resource.data.addedBy == request.auth.uid
-        && request.resource.data.addedAt == request.time;
-
-      allow update: if isStaff() && onlyChanges(['blocked', 'reason']);
-      allow delete: if isAdmin();
-    }
-
-    // ----------------------------------------------------------- sensors
-    match /sensors/{sensorId} {
-      allow read: if isStaff();
-      allow write: if false;
-    }
-
-    // --------------------------------------------------------- audit log
-    // Staff add entries as themselves. Only admins can read them.
-    // Nobody can edit or delete an entry.
-    match /auditLog/{id} {
-      allow read: if isAdmin();
-      allow create: if isStaff()
-        && request.resource.data.actorUid == request.auth.uid
-        && request.resource.data.timestamp == request.time
-        && request.resource.data.action is string;
-      allow update, delete: if false;
-    }
-
-    // ------------------------------------------------------------- stats
-    match /stats/{day} {
-      allow read: if isStaff();
-      allow write: if false;
     }
 
     // ----------------------------------------------- everything else: no

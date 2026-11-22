@@ -28,8 +28,34 @@ OPEN_STATUSES = [
 _db = None
 
 
+def workspace_id() -> str:
+    wid = os.environ.get("GATEWATCH_WORKSPACE", "").strip()
+    if not wid:
+        raise RuntimeError(
+            "No workspace set. Add GATEWATCH_WORKSPACE=<your id> to sensor/.env "
+            "(the app shows it on the More page, under 'Connect a sensor')."
+        )
+    return wid
+
+
+class _Workspace:
+    """The Firestore client, scoped to one workspace. Everything else in the
+    sensor keeps saying collection("alerts"); this makes that mean
+    workspaces/<id>/alerts, so one sensor can only ever write to one workspace."""
+
+    def __init__(self, client, wid: str) -> None:
+        self._client = client
+        self.workspace = wid
+
+    def collection(self, name: str):
+        return self._client.collection("workspaces").document(self.workspace).collection(name)
+
+    def batch(self):
+        return self._client.batch()
+
+
 def get_db():
-    """Connects on first use and returns the Firestore client."""
+    """Connects on first use and returns the Firestore client for your workspace."""
     global _db
     if _db is None:
         key_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT") or os.environ.get(
@@ -41,9 +67,10 @@ def get_db():
             )
         if not os.path.isfile(key_path):
             raise RuntimeError(f"Service account key not found at: {key_path}")
+        wid = workspace_id()
         if not firebase_admin._apps:
             firebase_admin.initialize_app(credentials.Certificate(key_path))
-        _db = firestore.client()
+        _db = _Workspace(firestore.client(), wid)
     return _db
 
 
